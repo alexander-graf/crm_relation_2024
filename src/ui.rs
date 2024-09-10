@@ -9,7 +9,6 @@ use serde_json;
 
 static STEP: Lazy<Mutex<u8>> = Lazy::new(|| Mutex::new(1));
 static DB_CONFIG: Lazy<Mutex<Option<DbConfig>>> = Lazy::new(|| Mutex::new(None));
-static NEW_CUSTOMER: Lazy<Mutex<Customer>> = Lazy::new(|| Mutex::new(Customer::default()));
 
 pub fn render_menu_bar(ctx: &egui::Context, current_view: &mut View) {
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -165,7 +164,10 @@ fn render_step_two(ui: &mut egui::Ui) {
 
 
 
-pub fn render_customers_view(ctx: &egui::Context) {
+use std::sync::Arc;
+
+
+pub fn render_customers_view(ctx: &egui::Context, customers: Arc<Mutex<Vec<Customer>>>) {
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.heading("Customers");
         
@@ -174,83 +176,92 @@ pub fn render_customers_view(ctx: &egui::Context) {
             return;
         }
 
-        let customer_id = egui::Id::new("new_customer");
-        let mut customer: Customer = ctx.data(|data| data.get_temp(customer_id).unwrap_or_default());
+        // Display existing customers
+        ui.heading("Existing Customers");
+        let customers_lock = customers.lock().unwrap();
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for customer in customers_lock.iter() {
+                ui.horizontal(|ui| {
+                    ui.label(&customer.company_name);
+                    ui.label(&customer.contact_name);
+                    ui.label(&customer.email);
+                });
+            }
+        });
+        drop(customers_lock);
 
+        // Add new customer form
         ui.heading("Add New Customer");
-        
+        let customer_id = egui::Id::new("new_customer");
+        let mut new_customer: Customer = ctx.data(|d| d.get_temp(customer_id).unwrap_or_default());
+
         ui.horizontal(|ui| {
             ui.label("Company Name:");
-            ui.text_edit_singleline(&mut customer.company_name);
+            ui.text_edit_singleline(&mut new_customer.company_name);
         });
         ui.horizontal(|ui| {
             ui.label("Contact Name:");
-            ui.text_edit_singleline(&mut customer.contact_name);
+            ui.text_edit_singleline(&mut new_customer.contact_name);
         });
         ui.horizontal(|ui| {
             ui.label("Contact Position:");
-            ui.text_edit_singleline(&mut customer.contact_position);
+            ui.text_edit_singleline(&mut new_customer.contact_position);
         });
         ui.horizontal(|ui| {
             ui.label("Address:");
-            ui.text_edit_multiline(&mut customer.address);
+            ui.text_edit_multiline(&mut new_customer.address);
         });
         ui.horizontal(|ui| {
             ui.label("City:");
-            ui.text_edit_singleline(&mut customer.city);
+            ui.text_edit_singleline(&mut new_customer.city);
         });
         ui.horizontal(|ui| {
             ui.label("Postal Code:");
-            ui.text_edit_singleline(&mut customer.postal_code);
+            ui.text_edit_singleline(&mut new_customer.postal_code);
         });
         ui.horizontal(|ui| {
             ui.label("Country:");
-            ui.text_edit_singleline(&mut customer.country);
+            ui.text_edit_singleline(&mut new_customer.country);
         });
         ui.horizontal(|ui| {
             ui.label("Phone:");
-            ui.text_edit_singleline(&mut customer.phone);
+            ui.text_edit_singleline(&mut new_customer.phone);
         });
         ui.horizontal(|ui| {
             ui.label("Email:");
-            ui.text_edit_singleline(&mut customer.email);
+            ui.text_edit_singleline(&mut new_customer.email);
         });
         ui.horizontal(|ui| {
             ui.label("Website:");
-            ui.text_edit_singleline(&mut customer.website);
+            ui.text_edit_singleline(&mut new_customer.website);
         });
 
         if ui.button("Save Customer").clicked() {
             if let Some(config) = db::get_config() {
-                let customer_clone = customer.clone();
+                let config_clone = config.clone();
+                let new_customer_clone = new_customer.clone();
+                let customers_clone = customers.clone();
                 tokio::spawn(async move {
-                    match db::add_customer(&config, &customer_clone).await {
+                    match db::add_customer(&config_clone, &new_customer_clone).await {
                         Ok(_) => {
                             println!("Customer added successfully!");
-                            // You might want to update the UI here to show a success message
+                            let mut customers = customers_clone.lock().unwrap();
+                            customers.push(new_customer_clone);
                         },
-                        Err(e) => {
-                            eprintln!("Error adding customer: {}", e);
-                            // You might want to update the UI here to show an error message
-                        },
+                        Err(e) => eprintln!("Error adding customer: {}", e),
                     }
                 });
-                customer = Customer::default(); // Reset the form
+                new_customer = Customer::default(); // Reset the form
             } else {
                 println!("No database configuration found!");
-                // You might want to update the UI here to show an error message
             }
         }
 
-        ctx.data_mut(|data| data.insert_temp(customer_id, customer));
+        ctx.data_mut(|d| d.insert_temp(customer_id, new_customer));
 
-        // You might want to add a section here to display existing customers
-        // This could involve fetching customers from the database and displaying them in a list or table
-        ui.separator();
-        ui.heading("Existing Customers");
-        ui.label("TODO: Implement display of existing customers");
     });
 }
+
 pub fn render_invoices_view(ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.heading("Invoices");

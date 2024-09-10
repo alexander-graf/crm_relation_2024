@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
-use tokio_postgres::{NoTls, Error as PgError};
+use tokio_postgres::NoTls;
+
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct DbConfig {
@@ -234,3 +235,34 @@ pub async fn add_customer(config: &DbConfig, customer: &Customer) -> Result<(), 
 }
 
 
+pub async fn get_customers(config: &DbConfig) -> Result<Vec<Customer>, Box<dyn std::error::Error>> {
+    let conn_string = format!(
+        "host={} port={} user={} password={} dbname={}",
+        config.host, config.port, config.username, config.password, config.database
+    );
+
+    let (client, connection) = tokio_postgres::connect(&conn_string, NoTls).await?;
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("Connection error: {}", e);
+        }
+    });
+
+    let rows = client.query("SELECT * FROM customers ORDER BY company_name", &[]).await?;
+
+    let customers: Vec<Customer> = rows.iter().map(|row| Customer {
+        company_name: row.get("company_name"),
+        contact_name: row.get("contact_name"),
+        contact_position: row.get("contact_position"),
+        address: row.get("address"),
+        city: row.get("city"),
+        postal_code: row.get("postal_code"),
+        country: row.get("country"),
+        phone: row.get("phone"),
+        email: row.get("email"),
+        website: row.get("website"),
+    }).collect();
+
+    Ok(customers)
+}
