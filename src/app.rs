@@ -1,6 +1,5 @@
 use eframe::egui;
 use crate::ui;
-use crate::db::DbConfig;
 
 pub struct CrmApp {
     current_view: View,

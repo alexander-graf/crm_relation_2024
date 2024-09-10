@@ -1,6 +1,6 @@
 use eframe::egui;
 use crate::app::View;
-use crate::db::{self, DbConfig};
+use crate::db::{self, DbConfig, Customer};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
@@ -9,6 +9,7 @@ use serde_json;
 
 static STEP: Lazy<Mutex<u8>> = Lazy::new(|| Mutex::new(1));
 static DB_CONFIG: Lazy<Mutex<Option<DbConfig>>> = Lazy::new(|| Mutex::new(None));
+static NEW_CUSTOMER: Lazy<Mutex<Customer>> = Lazy::new(|| Mutex::new(Customer::default()));
 
 pub fn render_menu_bar(ctx: &egui::Context, current_view: &mut View) {
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -79,12 +80,12 @@ pub fn render_setup_wizard_view(ctx: &egui::Context) {
                     ui.label("Setup complete!");
                     if ui.button("Close").clicked() {
                         *step = 1;
-                        *DB_CONFIG.lock().unwrap() = None;
                     }
                 }
             }
         });
 }
+
 
 fn render_step_one(ui: &mut egui::Ui) {
     ui.heading("Step 1: Database Configuration");
@@ -161,19 +162,95 @@ fn render_step_two(ui: &mut egui::Ui) {
     }
 }
 
+
+
+
 pub fn render_customers_view(ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.heading("Customers");
-        ui.label("Here you can manage your customers.");
-        if ui.button("Add New Customer").clicked() {
-            // TODO: Implement add new customer functionality
+        
+        if db::get_config().is_none() {
+            ui.label("No database configuration found. Please run the Setup Wizard first.");
+            return;
         }
-        if ui.button("View Customer List").clicked() {
-            // TODO: Implement view customer list functionality
+
+        let customer_id = egui::Id::new("new_customer");
+        let mut customer: Customer = ctx.data(|data| data.get_temp(customer_id).unwrap_or_default());
+
+        ui.heading("Add New Customer");
+        
+        ui.horizontal(|ui| {
+            ui.label("Company Name:");
+            ui.text_edit_singleline(&mut customer.company_name);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Contact Name:");
+            ui.text_edit_singleline(&mut customer.contact_name);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Contact Position:");
+            ui.text_edit_singleline(&mut customer.contact_position);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Address:");
+            ui.text_edit_multiline(&mut customer.address);
+        });
+        ui.horizontal(|ui| {
+            ui.label("City:");
+            ui.text_edit_singleline(&mut customer.city);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Postal Code:");
+            ui.text_edit_singleline(&mut customer.postal_code);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Country:");
+            ui.text_edit_singleline(&mut customer.country);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Phone:");
+            ui.text_edit_singleline(&mut customer.phone);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Email:");
+            ui.text_edit_singleline(&mut customer.email);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Website:");
+            ui.text_edit_singleline(&mut customer.website);
+        });
+
+        if ui.button("Save Customer").clicked() {
+            if let Some(config) = db::get_config() {
+                let customer_clone = customer.clone();
+                tokio::spawn(async move {
+                    match db::add_customer(&config, &customer_clone).await {
+                        Ok(_) => {
+                            println!("Customer added successfully!");
+                            // You might want to update the UI here to show a success message
+                        },
+                        Err(e) => {
+                            eprintln!("Error adding customer: {}", e);
+                            // You might want to update the UI here to show an error message
+                        },
+                    }
+                });
+                customer = Customer::default(); // Reset the form
+            } else {
+                println!("No database configuration found!");
+                // You might want to update the UI here to show an error message
+            }
         }
+
+        ctx.data_mut(|data| data.insert_temp(customer_id, customer));
+
+        // You might want to add a section here to display existing customers
+        // This could involve fetching customers from the database and displaying them in a list or table
+        ui.separator();
+        ui.heading("Existing Customers");
+        ui.label("TODO: Implement display of existing customers");
     });
 }
-
 pub fn render_invoices_view(ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.heading("Invoices");
@@ -207,7 +284,7 @@ fn save_config_to_file(config: &DbConfig, path: &PathBuf) -> Result<(), Box<dyn 
     Ok(())
 }
 
-fn load_config_from_file(path: &PathBuf) -> Result<DbConfig, Box<dyn std::error::Error>> {
+pub fn load_config_from_file(path: &PathBuf) -> Result<DbConfig, Box<dyn std::error::Error>> {
     let config_json = fs::read_to_string(path)?;
     let config: DbConfig = serde_json::from_str(&config_json)?;
     Ok(config)
