@@ -3,9 +3,10 @@ use crate::ui;
 use crate::db::{self, ContactHistory, Customer};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
-use crate::config::DbConfig;
 
-
+use crate::config;
+use std::path::PathBuf;
+use std::env;
 
 
 
@@ -42,29 +43,58 @@ impl Default for CrmApp {
 
 impl CrmApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let  app = Self {
+        let app = Self {
             current_view: View::Main,
             customers: Arc::new(Mutex::new(Vec::new())),
             customer_contact_window_open: false,
             active_customer_index: 0,
             contact_history_cache: Arc::new(Mutex::new(HashMap::new())),
         };
-// Load database configuration
-if let Ok(config) = DbConfig::load() {
-    let customers = Arc::clone(&app.customers);
-    tokio::spawn(async move {
-        if let Ok(loaded_customers) = db::get_customers(&config).await {
-            *customers.lock().unwrap() = loaded_customers;
+
+        // Load the database configuration
+        let config_path = PathBuf::from(format!("{}/.config/zugangsdaten.ini", env::var("HOME").unwrap()));
+        let db_config = config::load_db_config(&config_path).expect("Failed to load database configuration");
+
+        // Load customers asynchronously
+        let customers = Arc::clone(&app.customers);
+        let db_config_clone = db_config.clone();
+        tokio::spawn(async move {
+            if let Ok(loaded_customers) = db::get_customers(&db_config_clone).await {
+                *customers.lock().unwrap() = loaded_customers;
+            }
+        });
+
+        app
+    }
+
+    fn ensure_customers_loaded(&self) -> bool {
+        let customers = self.customers.lock().unwrap();
+        if customers.is_empty() {
+            // If no customers are loaded, try to load them again
+            drop(customers); // Release the lock
+            let customers = Arc::clone(&self.customers);
+            let config_path = PathBuf::from(format!("{}/.config/zugangsdaten.ini", env::var("HOME").unwrap()));
+            tokio::spawn(async move {
+                match config::load_db_config(&config_path) {
+                    Ok(db_config) => {
+                        if let Ok(loaded_customers) = db::get_customers(&db_config).await {
+                            *customers.lock().unwrap() = loaded_customers;
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to load database configuration: {}", e),
+                }
+            });
+            false
+        } else {
+            true
         }
-    });
-} else {
-    eprintln!("Failed to load database configuration");
-}
-
-app
-}
-
+    }
+    
 fn render_customer_contact(&mut self, ui: &mut egui::Ui) {
+    if !self.ensure_customers_loaded() {
+        ui.label("Loading customer data...");
+        return;
+    }
     let customer_count = self.customers.lock().unwrap().len();
     if customer_count == 0 {
         ui.label("No customer records available.");

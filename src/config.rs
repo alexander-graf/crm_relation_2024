@@ -4,6 +4,8 @@ use std::fs;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use std::default::Default;
+use std::path::PathBuf;
+use std::io::{Read, Write};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DbConfig {
@@ -27,6 +29,7 @@ impl Default for DbConfig {
         }
     }
 }
+
 impl DbConfig {
     pub fn connection_string(&self) -> String {
         format!(
@@ -35,25 +38,38 @@ impl DbConfig {
         )
     }
 
-    pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        let config_str = fs::read_to_string("db_config.json")?;
-        let config: DbConfig = serde_json::from_str(&config_str)?;
+    pub fn load(config_path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut file = fs::File::open(config_path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        let config: DbConfig = serde_json::from_str(&contents)?;
         Ok(config)
     }
 
-    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let config_str = serde_json::to_string(self)?;
-        fs::write("db_config.json", config_str)?;
+    pub fn save(&self, config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+        let contents = serde_json::to_string_pretty(self)?;
+        let mut file = fs::File::create(config_path)?;
+        file.write_all(contents.as_bytes())?;
         Ok(())
     }
 }
 
-pub fn initialize_db_config() -> Result<(), Box<dyn std::error::Error>> {
-    match DbConfig::load() {
+pub fn initialize_db_config(config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    match DbConfig::load(config_path) {
         Ok(config) => {
             *DB_CONFIG.lock().unwrap() = Some(config);
             Ok(())
         }
         Err(e) => Err(e),
     }
+}
+
+pub fn load_db_config(config_path: &PathBuf) -> Result<DbConfig, Box<dyn std::error::Error + Send + Sync>> {
+    let contents = fs::read_to_string(config_path)?;
+    let config: DbConfig = serde_json::from_str(&contents)?;
+    Ok(config)
+}
+
+pub fn save_db_config(config: &DbConfig, config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    config.save(config_path)
 }
