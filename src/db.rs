@@ -1,3 +1,4 @@
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Serialize, Deserialize};
 use tokio_postgres::NoTls;
 
@@ -24,6 +25,24 @@ pub struct Customer {
     pub email: String,
     pub website: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct ContactHistory {
+    pub history_id: i32,
+    pub customer_id: i32,
+    pub contact_type: String,
+    pub contact_date: DateTime<Utc>,
+    pub contact_duration: Option<i32>,
+    pub contact_method: Option<String>,
+    pub contact_outcome: String,
+    pub notes: String,
+    pub follow_up_date: Option<NaiveDate>,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+
 
 pub async fn create_database(config: &DbConfig) -> Result<(), Box<dyn std::error::Error>> {
     println!("Attempting to create database: {}", config.database);
@@ -155,31 +174,49 @@ pub async fn create_database_structure(config: &DbConfig) -> Result<(), Box<dyn 
         );
 
         -- Payments table
-        CREATE TABLE IF NOT EXISTS payments (
-            payment_id SERIAL PRIMARY KEY,
-            invoice_id INTEGER REFERENCES invoices(invoice_id),
-            payment_date DATE NOT NULL,
-            amount DECIMAL(10, 2) NOT NULL,
-            payment_method VARCHAR(50) NOT NULL,
-            transaction_id VARCHAR(100),
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+CREATE TABLE IF NOT EXISTS payments (
+    payment_id SERIAL PRIMARY KEY,
+    invoice_id INTEGER REFERENCES invoices(invoice_id),
+    payment_date DATE NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    payment_method VARCHAR(50) NOT NULL,
+    transaction_id VARCHAR(100),
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-        -- Contacts table
-        CREATE TABLE IF NOT EXISTS contacts (
-            contact_id SERIAL PRIMARY KEY,
-            customer_id INTEGER REFERENCES customers(customer_id),
-            first_name VARCHAR(50) NOT NULL,
-            last_name VARCHAR(50) NOT NULL,
-            email VARCHAR(100),
-            phone VARCHAR(20),
-            position VARCHAR(50),
-            is_primary BOOLEAN DEFAULT false,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+-- Contact History table
+CREATE TABLE IF NOT EXISTS contact_history (
+    history_id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL,
+    contact_type VARCHAR(50) NOT NULL,
+    contact_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    contact_duration INTEGER,
+    contact_method VARCHAR(50),
+    contact_outcome VARCHAR(100) NOT NULL,
+    notes TEXT,
+    follow_up_date DATE,
+    created_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+);
+
+-- Contacts table
+CREATE TABLE IF NOT EXISTS contacts (
+    contact_id SERIAL PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(customer_id),
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100),
+    phone VARCHAR(20),
+    position VARCHAR(50),
+    is_primary BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 
         -- Create indexes for better performance
         CREATE INDEX IF NOT EXISTS idx_customers_company_name ON customers(company_name);
@@ -265,4 +302,54 @@ pub async fn get_customers(config: &DbConfig) -> Result<Vec<Customer>, Box<dyn s
     }).collect();
 
     Ok(customers)
+}
+
+
+pub async fn get_contact_history(config: &DbConfig, customer_id: i32) -> Result<Vec<ContactHistory>, Box<dyn std::error::Error>> {
+    let conn_string = format!(
+        "host={} port={} user={} password={} dbname={}",
+        config.host, config.port, config.username, config.password, config.database
+    );
+
+    let (client, connection) = tokio_postgres::connect(&conn_string, NoTls).await?;
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("Connection error: {}", e);
+        }
+    });
+
+    let rows = client
+        .query(
+            "SELECT * FROM contact_history WHERE customer_id = $1 ORDER BY contact_date DESC",
+            &[&customer_id],
+        )
+        .await?;
+
+    let history: Vec<ContactHistory> = rows
+        .iter()
+        .map(|row| {
+            let contact_date: DateTime<Utc> = row.get("contact_date");
+            let follow_up_date: Option<NaiveDate> = row.get("follow_up_date");
+            let created_at: DateTime<Utc> = row.get("created_at");
+            let updated_at: DateTime<Utc> = row.get("updated_at");
+
+            ContactHistory {
+                history_id: row.get("history_id"),
+                customer_id: row.get("customer_id"),
+                contact_type: row.get("contact_type"),
+                contact_date,
+                contact_duration: row.get("contact_duration"),
+                contact_method: row.get("contact_method"),
+                contact_outcome: row.get("contact_outcome"),
+                notes: row.get("notes"),
+                follow_up_date,
+                created_by: row.get("created_by"),
+                created_at,
+                updated_at,
+            }
+        })
+        .collect();
+
+    Ok(history)
 }
