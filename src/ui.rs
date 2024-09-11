@@ -10,7 +10,7 @@ use serde_json;
 static STEP: Lazy<Mutex<u8>> = Lazy::new(|| Mutex::new(1));
 static DB_CONFIG: Lazy<Mutex<Option<DbConfig>>> = Lazy::new(|| Mutex::new(None));
 
-pub fn render_menu_bar(ctx: &egui::Context, current_view: &mut View) {
+pub fn render_menu_bar(ctx: &egui::Context, current_view: &mut View, customer_contact_window_open: &mut bool) {
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("File", |ui| {
@@ -20,6 +20,7 @@ pub fn render_menu_bar(ctx: &egui::Context, current_view: &mut View) {
                 if ui.button("Settings").clicked() {
                     *current_view = View::Settings;
                 }
+                
                 if ui.button("Quit").clicked() {
                     std::process::exit(0);
                 }
@@ -31,6 +32,11 @@ pub fn render_menu_bar(ctx: &egui::Context, current_view: &mut View) {
                 }
                 if ui.button("Invoices").clicked() {
                     *current_view = View::Invoices;
+                }
+                if ui.button("Customer Contact").clicked() { // Neuer Button
+                    *customer_contact_window_open = true;
+                    *current_view = View::CustomerContact;
+                    
                 }
             });
 
@@ -161,6 +167,12 @@ fn render_step_two(ui: &mut egui::Ui) {
     }
 }
 
+pub fn render_customer_contact_view(ctx: &egui::Context) {
+    egui::CentralPanel::default().show(ctx, |ui| {
+        ui.heading("Customer Contact");
+        // Hier können Sie den Inhalt für die Customer Contact-Ansicht hinzufügen
+    });
+}
 
 
 
@@ -299,4 +311,13 @@ pub fn load_config_from_file(path: &PathBuf) -> Result<DbConfig, Box<dyn std::er
     let config_json = fs::read_to_string(path)?;
     let config: DbConfig = serde_json::from_str(&config_json)?;
     Ok(config)
+}
+
+pub fn render_customer_contact_window(ctx: &egui::Context, open: &mut bool) {
+    egui::Window::new("Customer Contact")
+        .open(open)
+        .show(ctx, |ui| {
+            ui.label("This is the Customer Contact window.");
+            // Hier können Sie später weitere Widgets hinzufügen
+        });
 }
