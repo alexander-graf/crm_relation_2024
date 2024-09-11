@@ -1,5 +1,7 @@
 use crate::db::{self, ContactHistory, Customer};
 use crate::ui;
+use chrono::{NaiveDate, Utc};
+
 use eframe::egui;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -14,6 +16,10 @@ pub struct CrmApp {
     customer_contact_window_open: bool,
     active_customer_index: usize,
     contact_history_cache: Arc<Mutex<HashMap<i32, Vec<ContactHistory>>>>,
+    search_query: String,  // für CustomerSearch
+    search_results: Vec<Customer>,
+    selected_customer: Option<Customer>,
+    new_contact_history: ContactHistory,
 }
 
 // Menüpunkte
@@ -36,6 +42,10 @@ impl Default for CrmApp {
             customer_contact_window_open: false,
             active_customer_index: 0,
             contact_history_cache: Arc::new(Mutex::new(HashMap::new())),
+            search_query: String::new(),
+            search_results: Vec::new(),
+            selected_customer: None,
+            new_contact_history: ContactHistory::default(),
         }
     }
 }
@@ -48,6 +58,10 @@ impl CrmApp {
             customer_contact_window_open: false,
             active_customer_index: 0,
             contact_history_cache: Arc::new(Mutex::new(HashMap::new())),
+            search_query: String::new(),
+            search_results: Vec::new(),
+            selected_customer: None,
+            new_contact_history: ContactHistory::default(),
         };
 
         // Load the database configuration
@@ -69,10 +83,92 @@ impl CrmApp {
 
         app
     }
-    fn render_customer_search(&self, ui: &mut egui::Ui) {
-        ui.label("Customer Search Window");
-        // Hier können Sie später die Suchfunktionalität implementieren
+
+    fn render_customer_search(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Search:");
+            if ui.text_edit_singleline(&mut self.search_query).changed() {
+                self.search_customers();
+            }
+        });
+    
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for customer in &self.search_results {
+                if ui.button(&customer.contact_name).double_clicked() {
+                    self.selected_customer = Some(customer.clone());
+                    self.new_contact_history = ContactHistory::default();
+                    self.new_contact_history.customer_id = customer.customer_id;
+                }
+            }
+        });
+    
+        if let Some(customer) = &self.selected_customer {
+            ui.group(|ui| {
+                ui.label(format!("New Contact History for {}", customer.contact_name));
+                ui.horizontal(|ui| {
+                    ui.label("Contact Type:");
+                    ui.text_edit_singleline(&mut self.new_contact_history.contact_type);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Contact Date:");
+                    let mut date_string = self.new_contact_history.contact_date.format("%Y-%m-%d").to_string();
+                    if ui.text_edit_singleline(&mut date_string).changed() {
+                        if let Ok(date) = NaiveDate::parse_from_str(&date_string, "%Y-%m-%d") {
+                            if let Some(datetime) = date.and_hms_opt(0, 0, 0) {
+                                self.new_contact_history.contact_date = datetime.and_local_timezone(Utc).unwrap();
+                            }
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Notes:");
+                    ui.text_edit_multiline(&mut self.new_contact_history.notes);
+                });
+            });
+    
+            // Move this outside of the ui.group closure
+            if ui.button("Save").clicked() {
+                if !self.new_contact_history.contact_type.is_empty() && !self.new_contact_history.notes.is_empty() {
+                    self.save_contact_history();
+                } else {
+                    ui.label("Please fill in all required fields");
+                }
+            }
+        }
     }
+    
+
+    fn search_customers(&mut self) {
+        let search_query = self.search_query.clone();
+        let customers = Arc::clone(&self.customers);
+        let search_results = Arc::new(Mutex::new(Vec::new()));
+
+        let search_results_clone = Arc::clone(&search_results);
+        tokio::spawn(async move {
+            let customers = customers.lock().unwrap();
+            let results: Vec<Customer> = customers
+                .iter()
+                .filter(|c| c.contact_name.to_lowercase().contains(&search_query.to_lowercase()))
+                .cloned()
+                .collect();
+            *search_results_clone.lock().unwrap() = results;
+        });
+
+        self.search_results = search_results.lock().unwrap().clone();
+    }
+
+    fn save_contact_history(&mut self) {
+        if let Some(config) = db::get_config() {
+            let new_history = self.new_contact_history.clone();
+            tokio::spawn(async move {
+                match db::add_contact_history(&config, &new_history).await {
+                    Ok(_) => println!("Contact history saved successfully"),
+                    Err(e) => eprintln!("Error saving contact history: {}", e),
+                }
+            });
+        }
+    }
+
     fn ensure_customers_loaded(&self) -> bool {
         let customers = self.customers.lock().unwrap();
         if customers.is_empty() {
@@ -250,6 +346,7 @@ impl CrmApp {
     }
 }
 
+
 impl eframe::App for CrmApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ui::render_menu_bar(
@@ -292,3 +389,5 @@ impl eframe::App for CrmApp {
         }
     }
 }
+
+

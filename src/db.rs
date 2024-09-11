@@ -3,14 +3,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use tokio_postgres::NoTls;
 
-// #[derive(Serialize, Deserialize, Clone, Default, Debug)]
-// pub struct DbConfig {
-//     pub host: String,
-//     pub port: String,
-//     pub username: String,
-//     pub password: String,
-//     pub database: String,
-// }
+
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct Customer {
@@ -41,6 +34,25 @@ pub struct ContactHistory {
     pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl Default for ContactHistory {
+    fn default() -> Self {
+        ContactHistory {
+            history_id: 0, // Oder ein anderer geeigneter Standardwert
+            customer_id: 0,
+            contact_type: String::new(),
+            contact_date: Utc::now(),
+            contact_duration: None,
+            contact_method: None,
+            contact_outcome: String::new(),
+            notes: String::new(),
+            follow_up_date: None,
+            created_by: String::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
 }
 
 pub async fn create_database(config: &DbConfig) -> Result<(), Box<dyn std::error::Error>> {
@@ -450,4 +462,34 @@ pub async fn get_customer_with_history(
     println!("Fetched {} contact history entries", history.len());
 
     Ok((customer, history))
+}
+
+
+pub async fn add_contact_history(config: &DbConfig, history: &ContactHistory) -> Result<(), Box<dyn std::error::Error>> {
+    let conn_string = format!(
+        "host={} port={} user={} password={} dbname={}",
+        config.host, config.port, config.username, config.password, config.database
+    );
+
+    let (client, connection) = tokio_postgres::connect(&conn_string, NoTls).await?;
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("Connection error: {}", e);
+        }
+    });
+
+    let statement = "
+        INSERT INTO contact_history (customer_id, contact_type, contact_date, notes)
+        VALUES ($1, $2, $3, $4)
+    ";
+
+    client.execute(statement, &[
+        &history.customer_id,
+        &history.contact_type,
+        &history.contact_date,
+        &history.notes,
+    ]).await?;
+
+    Ok(())
 }
