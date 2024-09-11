@@ -1,12 +1,15 @@
 use eframe::egui;
 use std::path::PathBuf;
 mod app;
+pub mod config;
 mod db;
 mod ui;
-pub mod config;
 
 fn load_initial_config() {
-    let config_path = PathBuf::from(format!("{}/.config/zugangsdaten.ini", std::env::var("HOME").unwrap()));
+    let config_path = PathBuf::from(format!(
+        "{}/.config/zugangsdaten.ini",
+        std::env::var("HOME").unwrap()
+    ));
     if config_path.exists() {
         match ui::load_config_from_file(&config_path) {
             Ok(config) => {

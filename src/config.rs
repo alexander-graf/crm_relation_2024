@@ -1,11 +1,11 @@
 // config.rs
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::sync::Mutex;
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::default::Default;
-use std::path::PathBuf;
+use std::fs;
 use std::io::{Read, Write};
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DbConfig {
@@ -64,12 +64,17 @@ pub fn initialize_db_config(config_path: &PathBuf) -> Result<(), Box<dyn std::er
     }
 }
 
-pub fn load_db_config(config_path: &PathBuf) -> Result<DbConfig, Box<dyn std::error::Error + Send + Sync>> {
+pub fn load_db_config(
+    config_path: &PathBuf,
+) -> Result<DbConfig, Box<dyn std::error::Error + Send + Sync>> {
     let contents = fs::read_to_string(config_path)?;
     let config: DbConfig = serde_json::from_str(&contents)?;
     Ok(config)
 }
 
-pub fn save_db_config(config: &DbConfig, config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+pub fn save_db_config(
+    config: &DbConfig,
+    config_path: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
     config.save(config_path)
 }

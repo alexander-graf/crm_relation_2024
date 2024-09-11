@@ -1,18 +1,22 @@
-use eframe::egui;
 use crate::app::View;
 use crate::config::DbConfig;
 use crate::db::{self, Customer};
+use eframe::egui;
 
+use once_cell::sync::Lazy;
+use serde_json;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use once_cell::sync::Lazy;
-use std::fs;
-use serde_json;
 
 static STEP: Lazy<Mutex<u8>> = Lazy::new(|| Mutex::new(1));
 static DB_CONFIG: Lazy<Mutex<Option<DbConfig>>> = Lazy::new(|| Mutex::new(None));
 
-pub fn render_menu_bar(ctx: &egui::Context, current_view: &mut View, customer_contact_window_open: &mut bool) {
+pub fn render_menu_bar(
+    ctx: &egui::Context,
+    current_view: &mut View,
+    customer_contact_window_open: &mut bool,
+) {
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("File", |ui| {
@@ -22,7 +26,7 @@ pub fn render_menu_bar(ctx: &egui::Context, current_view: &mut View, customer_co
                 if ui.button("Settings").clicked() {
                     *current_view = View::Settings;
                 }
-                
+
                 if ui.button("Quit").clicked() {
                     std::process::exit(0);
                 }
@@ -35,10 +39,13 @@ pub fn render_menu_bar(ctx: &egui::Context, current_view: &mut View, customer_co
                 if ui.button("Invoices").clicked() {
                     *current_view = View::Invoices;
                 }
-                if ui.button("Customer Contact").clicked() { // Neuer Button
+                if ui.button("Customer Contact").clicked() {
+                    // Neuer Button
                     *customer_contact_window_open = true;
                     *current_view = View::CustomerContact;
-                    
+                }
+                if ui.button("Customer Search").clicked() {
+                    *current_view = View::CustomerSearch;
                 }
             });
 
@@ -64,9 +71,12 @@ pub fn render_setup_wizard_view(ctx: &egui::Context) {
         .resizable(false)
         .show(ctx, |ui| {
             let mut step = STEP.lock().unwrap();
-            
+
             if *step == 1 {
-                let config_path = PathBuf::from(format!("{}/.config/zugangsdaten.ini", std::env::var("HOME").unwrap()));
+                let config_path = PathBuf::from(format!(
+                    "{}/.config/zugangsdaten.ini",
+                    std::env::var("HOME").unwrap()
+                ));
                 if config_path.exists() {
                     match load_config_from_file(&config_path) {
                         Ok(config) => {
@@ -79,7 +89,7 @@ pub fn render_setup_wizard_view(ctx: &egui::Context) {
                     }
                 }
             }
-            
+
             match *step {
                 1 => render_step_one(ui),
                 2 => render_step_two(ui),
@@ -93,13 +103,12 @@ pub fn render_setup_wizard_view(ctx: &egui::Context) {
         });
 }
 
-
 fn render_step_one(ui: &mut egui::Ui) {
     ui.heading("Step 1: Database Configuration");
-    
+
     let mut db_config = DB_CONFIG.lock().unwrap();
     let config = db_config.get_or_insert_with(DbConfig::default);
-    
+
     ui.horizontal(|ui| {
         ui.label("Host:");
         ui.text_edit_singleline(&mut config.host);
@@ -122,9 +131,12 @@ fn render_step_one(ui: &mut egui::Ui) {
     });
 
     if ui.button("Next").clicked() {
-        let config_path = PathBuf::from(format!("{}/.config/zugangsdaten.ini", std::env::var("HOME").unwrap()));
+        let config_path = PathBuf::from(format!(
+            "{}/.config/zugangsdaten.ini",
+            std::env::var("HOME").unwrap()
+        ));
         ui.label(format!("Saving config to: {:?}", config_path));
-        
+
         if let Err(e) = save_config_to_file(&config, &config_path) {
             ui.label(format!("Error saving configuration: {}", e));
         } else {
@@ -137,7 +149,7 @@ fn render_step_one(ui: &mut egui::Ui) {
                 Ok(_) => {
                     println!("Database created successfully!");
                     *STEP.lock().unwrap() = 2;
-                },
+                }
                 Err(e) => {
                     eprintln!("Error creating database: {}", e);
                 }
@@ -148,16 +160,19 @@ fn render_step_one(ui: &mut egui::Ui) {
 
 fn render_step_two(ui: &mut egui::Ui) {
     ui.heading("Step 2: Create Database Structure");
-    
+
     if ui.button("Create Database Structure").clicked() {
         if let Some(config) = DB_CONFIG.lock().unwrap().clone() {
-            ui.label(format!("Attempting to create database structure for: {}", config.database));
+            ui.label(format!(
+                "Attempting to create database structure for: {}",
+                config.database
+            ));
             tokio::spawn(async move {
                 match db::create_database_structure(&config).await {
                     Ok(_) => {
                         println!("Database structure created successfully!");
                         *STEP.lock().unwrap() = 3;
-                    },
+                    }
                     Err(e) => {
                         eprintln!("Error creating database structure: {}", e);
                     }
@@ -176,15 +191,12 @@ pub fn render_customer_contact_view(ctx: &egui::Context) {
     });
 }
 
-
-
 use std::sync::Arc;
-
 
 pub fn render_customers_view(ctx: &egui::Context, customers: Arc<Mutex<Vec<Customer>>>) {
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.heading("Customers");
-        
+
         if db::get_config().is_none() {
             ui.label("No database configuration found. Please run the Setup Wizard first.");
             return;
@@ -261,7 +273,7 @@ pub fn render_customers_view(ctx: &egui::Context, customers: Arc<Mutex<Vec<Custo
                             println!("Customer added successfully!");
                             let mut customers = customers_clone.lock().unwrap();
                             customers.push(new_customer_clone);
-                        },
+                        }
                         Err(e) => eprintln!("Error adding customer: {}", e),
                     }
                 });
@@ -272,7 +284,6 @@ pub fn render_customers_view(ctx: &egui::Context, customers: Arc<Mutex<Vec<Custo
         }
 
         ctx.data_mut(|d| d.insert_temp(customer_id, new_customer));
-
     });
 }
 
@@ -302,7 +313,10 @@ pub fn render_settings_view(ctx: &egui::Context) {
     });
 }
 
-fn save_config_to_file(config: &DbConfig, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn save_config_to_file(
+    config: &DbConfig,
+    path: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config_json = serde_json::to_string_pretty(config)?;
     fs::create_dir_all(path.parent().unwrap())?;
     fs::write(path, config_json)?;

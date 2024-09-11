@@ -1,9 +1,7 @@
-use chrono::{DateTime, NaiveDate, Utc};
-use serde::{Serialize, Deserialize};
-use tokio_postgres::NoTls;
 use crate::config::DbConfig;
-
-
+use chrono::{DateTime, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
+use tokio_postgres::NoTls;
 
 // #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 // pub struct DbConfig {
@@ -27,7 +25,6 @@ pub struct Customer {
     pub email: String,
     pub website: String,
     pub customer_id: i32,
-    
 }
 
 #[derive(Debug, Clone)]
@@ -45,8 +42,6 @@ pub struct ContactHistory {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
-
-
 
 pub async fn create_database(config: &DbConfig) -> Result<(), Box<dyn std::error::Error>> {
     println!("Attempting to create database: {}", config.database);
@@ -75,7 +70,10 @@ pub async fn create_database(config: &DbConfig) -> Result<(), Box<dyn std::error
         client.execute(&create_db_query, &[]).await?;
         println!("Database created successfully");
 
-        let grant_query = format!("GRANT ALL PRIVILEGES ON DATABASE {} TO {}", config.database, config.username);
+        let grant_query = format!(
+            "GRANT ALL PRIVILEGES ON DATABASE {} TO {}",
+            config.database, config.username
+        );
         println!("Executing query: {}", grant_query);
         client.execute(&grant_query, &[]).await?;
         println!("Privileges granted to user {}", config.username);
@@ -103,7 +101,9 @@ pub fn get_config() -> Option<DbConfig> {
     config
 }
 
-pub async fn create_database_structure(config: &DbConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn create_database_structure(
+    config: &DbConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("Creating database structure for: {}", config.database);
     let conn_string = format!(
         "host={} port={} user={} password={} dbname={}",
@@ -120,7 +120,7 @@ pub async fn create_database_structure(config: &DbConfig) -> Result<(), Box<dyn 
     });
 
     println!("Connected successfully. Creating tables...");
-    
+
     let create_tables_query = "
         -- Customers table
         CREATE TABLE IF NOT EXISTS customers (
@@ -239,7 +239,10 @@ CREATE TABLE IF NOT EXISTS contacts (
     Ok(())
 }
 
-pub async fn add_customer(config: &DbConfig, customer: &Customer) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn add_customer(
+    config: &DbConfig,
+    customer: &Customer,
+) -> Result<(), Box<dyn std::error::Error>> {
     let conn_string = format!(
         "host={} port={} user={} password={} dbname={}",
         config.host, config.port, config.username, config.password, config.database
@@ -258,23 +261,27 @@ pub async fn add_customer(config: &DbConfig, customer: &Customer) -> Result<(), 
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     ";
 
-    client.execute(statement, &[
-        &customer.company_name,
-        &customer.contact_name,
-        &customer.contact_position,
-        &customer.address,
-        &customer.city,
-        &customer.postal_code,
-        &customer.country,
-        &customer.phone,
-        &customer.email,
-        &customer.website,
-    ]).await?;
+    client
+        .execute(
+            statement,
+            &[
+                &customer.company_name,
+                &customer.contact_name,
+                &customer.contact_position,
+                &customer.address,
+                &customer.city,
+                &customer.postal_code,
+                &customer.country,
+                &customer.phone,
+                &customer.email,
+                &customer.website,
+            ],
+        )
+        .await?;
 
     println!("Customer added successfully");
     Ok(())
 }
-
 
 pub async fn get_customers(config: &DbConfig) -> Result<Vec<Customer>, Box<dyn std::error::Error>> {
     let conn_string = format!(
@@ -290,27 +297,34 @@ pub async fn get_customers(config: &DbConfig) -> Result<Vec<Customer>, Box<dyn s
         }
     });
 
-    let rows = client.query("SELECT * FROM customers ORDER BY company_name", &[]).await?;
+    let rows = client
+        .query("SELECT * FROM customers ORDER BY company_name", &[])
+        .await?;
 
-    let customers: Vec<Customer> = rows.iter().map(|row| Customer {
-        company_name: row.get("company_name"),
-        contact_name: row.get("contact_name"),
-        contact_position: row.get("contact_position"),
-        address: row.get("address"),
-        city: row.get("city"),
-        postal_code: row.get("postal_code"),
-        country: row.get("country"),
-        phone: row.get("phone"),
-        email: row.get("email"),
-        website: row.get("website"),
-        customer_id: row.get("customer_id"),
-    }).collect();
+    let customers: Vec<Customer> = rows
+        .iter()
+        .map(|row| Customer {
+            company_name: row.get("company_name"),
+            contact_name: row.get("contact_name"),
+            contact_position: row.get("contact_position"),
+            address: row.get("address"),
+            city: row.get("city"),
+            postal_code: row.get("postal_code"),
+            country: row.get("country"),
+            phone: row.get("phone"),
+            email: row.get("email"),
+            website: row.get("website"),
+            customer_id: row.get("customer_id"),
+        })
+        .collect();
 
     Ok(customers)
 }
 
-
-pub async fn get_contact_history(config: &DbConfig, customer_id: i32) -> Result<Vec<ContactHistory>, Box<dyn std::error::Error>> {
+pub async fn get_contact_history(
+    config: &DbConfig,
+    customer_id: i32,
+) -> Result<Vec<ContactHistory>, Box<dyn std::error::Error>> {
     let conn_string = format!(
         "host={} port={} user={} password={} dbname={}",
         config.host, config.port, config.username, config.password, config.database
@@ -359,8 +373,10 @@ pub async fn get_contact_history(config: &DbConfig, customer_id: i32) -> Result<
     Ok(history)
 }
 
-
-pub async fn get_customer_with_history(config: &DbConfig, customer_id: i32) -> Result<(Customer, Vec<ContactHistory>), Box<dyn std::error::Error>> {
+pub async fn get_customer_with_history(
+    config: &DbConfig,
+    customer_id: i32,
+) -> Result<(Customer, Vec<ContactHistory>), Box<dyn std::error::Error>> {
     let conn_string = format!(
         "host={} port={} user={} password={} dbname={}",
         config.host, config.port, config.username, config.password, config.database
@@ -376,7 +392,10 @@ pub async fn get_customer_with_history(config: &DbConfig, customer_id: i32) -> R
 
     println!("Fetching customer data for customer_id: {}", customer_id);
     let customer_row = client
-        .query_one("SELECT * FROM customers WHERE customer_id = $1", &[&customer_id])
+        .query_one(
+            "SELECT * FROM customers WHERE customer_id = $1",
+            &[&customer_id],
+        )
         .await?;
 
     let customer = Customer {
@@ -397,7 +416,10 @@ pub async fn get_customer_with_history(config: &DbConfig, customer_id: i32) -> R
 
     println!("Fetching contact history for customer_id: {}", customer_id);
     let history_rows = client
-        .query("SELECT * FROM contact_history WHERE customer_id = $1 ORDER BY contact_date DESC", &[&customer_id])
+        .query(
+            "SELECT * FROM contact_history WHERE customer_id = $1 ORDER BY contact_date DESC",
+            &[&customer_id],
+        )
         .await?;
 
     let history: Vec<ContactHistory> = history_rows
