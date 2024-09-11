@@ -28,7 +28,7 @@ pub struct ContactHistory {
     pub contact_date: DateTime<Utc>,
     pub contact_duration: Option<i32>,
     pub contact_method: Option<String>,
-    pub contact_outcome: String,
+    pub contact_outcome: String, // Ändern Sie dies von Option<String> zu String
     pub notes: String,
     pub follow_up_date: Option<NaiveDate>,
     pub created_by: String,
@@ -480,15 +480,22 @@ pub async fn add_contact_history(config: &DbConfig, history: &ContactHistory) ->
     });
 
     let statement = "
-        INSERT INTO contact_history (customer_id, contact_type, contact_date, notes)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO contact_history (customer_id, contact_type, contact_date, contact_duration, contact_method, contact_outcome, notes, follow_up_date, created_by, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     ";
 
     client.execute(statement, &[
         &history.customer_id,
         &history.contact_type,
         &history.contact_date,
+        &history.contact_duration,
+        &history.contact_method,
+        &history.contact_outcome,
         &history.notes,
+        &history.follow_up_date,
+        &history.created_by,
+        &history.created_at,
+        &history.updated_at,
     ]).await?;
 
     Ok(())

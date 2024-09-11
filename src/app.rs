@@ -105,10 +105,12 @@ impl CrmApp {
         if let Some(customer) = &self.selected_customer {
             ui.group(|ui| {
                 ui.label(format!("New Contact History for {}", customer.contact_name));
+                
                 ui.horizontal(|ui| {
                     ui.label("Contact Type:");
                     ui.text_edit_singleline(&mut self.new_contact_history.contact_type);
                 });
+                
                 ui.horizontal(|ui| {
                     ui.label("Contact Date:");
                     let mut date_string = self.new_contact_history.contact_date.format("%Y-%m-%d").to_string();
@@ -120,15 +122,32 @@ impl CrmApp {
                         }
                     }
                 });
+                
+                ui.horizontal(|ui| {
+                    ui.label("Contact Method:");
+                    if self.new_contact_history.contact_method.is_none() {
+                        self.new_contact_history.contact_method = Some(String::new());
+                    }
+                    if let Some(method) = &mut self.new_contact_history.contact_method {
+                        ui.text_edit_singleline(method);
+                    }
+                });
+                
+                ui.horizontal(|ui| {
+                    ui.label("Contact Outcome:");
+                    ui.text_edit_singleline(&mut self.new_contact_history.contact_outcome);
+                });
+                
                 ui.horizontal(|ui| {
                     ui.label("Notes:");
                     ui.text_edit_multiline(&mut self.new_contact_history.notes);
                 });
             });
     
-            // Move this outside of the ui.group closure
             if ui.button("Save").clicked() {
-                if !self.new_contact_history.contact_type.is_empty() && !self.new_contact_history.notes.is_empty() {
+                if !self.new_contact_history.contact_type.is_empty() && 
+                   !self.new_contact_history.notes.is_empty() &&
+                   !self.new_contact_history.contact_outcome.is_empty() {
                     self.save_contact_history();
                 } else {
                     ui.label("Please fill in all required fields");
@@ -139,35 +158,41 @@ impl CrmApp {
     
 
     fn search_customers(&mut self) {
-        let search_query = self.search_query.clone();
-        let customers = Arc::clone(&self.customers);
-        let search_results = Arc::new(Mutex::new(Vec::new()));
-
-        let search_results_clone = Arc::clone(&search_results);
-        tokio::spawn(async move {
-            let customers = customers.lock().unwrap();
-            let results: Vec<Customer> = customers
-                .iter()
-                .filter(|c| c.contact_name.to_lowercase().contains(&search_query.to_lowercase()))
-                .cloned()
-                .collect();
-            *search_results_clone.lock().unwrap() = results;
-        });
-
-        self.search_results = search_results.lock().unwrap().clone();
+        let search_query = self.search_query.to_lowercase();
+        let customers = self.customers.lock().unwrap();
+        
+        self.search_results = customers
+            .iter()
+            .filter(|c| c.contact_name.to_lowercase().contains(&search_query) ||
+                        c.company_name.to_lowercase().contains(&search_query))
+            .cloned()
+            .collect();
+    
+        println!("Search query: '{}', Found {} results", search_query, self.search_results.len());
     }
+    
 
-    fn save_contact_history(&mut self) {
+    fn save_contact_history(&mut self) -> bool {
         if let Some(config) = db::get_config() {
             let new_history = self.new_contact_history.clone();
             tokio::spawn(async move {
                 match db::add_contact_history(&config, &new_history).await {
-                    Ok(_) => println!("Contact history saved successfully"),
-                    Err(e) => eprintln!("Error saving contact history: {}", e),
+                    Ok(_) => {
+                        println!("Contact history saved successfully");
+                        true
+                    },
+                    Err(e) => {
+                        eprintln!("Error saving contact history: {}", e);
+                        false
+                    },
                 }
             });
+            true // Assuming the spawn was successful
+        } else {
+            false
         }
     }
+    
 
     fn ensure_customers_loaded(&self) -> bool {
         let customers = self.customers.lock().unwrap();
