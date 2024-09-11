@@ -1,16 +1,18 @@
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Serialize, Deserialize};
 use tokio_postgres::NoTls;
+use crate::config::DbConfig;
 
 
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
-pub struct DbConfig {
-    pub host: String,
-    pub port: String,
-    pub username: String,
-    pub password: String,
-    pub database: String,
-}
+
+// #[derive(Serialize, Deserialize, Clone, Default, Debug)]
+// pub struct DbConfig {
+//     pub host: String,
+//     pub port: String,
+//     pub username: String,
+//     pub password: String,
+//     pub database: String,
+// }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct Customer {
@@ -24,6 +26,8 @@ pub struct Customer {
     pub phone: String,
     pub email: String,
     pub website: String,
+    pub customer_id: i32,
+    
 }
 
 #[derive(Debug, Clone)]
@@ -299,6 +303,7 @@ pub async fn get_customers(config: &DbConfig) -> Result<Vec<Customer>, Box<dyn s
         phone: row.get("phone"),
         email: row.get("email"),
         website: row.get("website"),
+        customer_id: row.get("customer_id"),
     }).collect();
 
     Ok(customers)
@@ -352,4 +357,75 @@ pub async fn get_contact_history(config: &DbConfig, customer_id: i32) -> Result<
         .collect();
 
     Ok(history)
+}
+
+
+pub async fn get_customer_with_history(config: &DbConfig, customer_id: i32) -> Result<(Customer, Vec<ContactHistory>), Box<dyn std::error::Error>> {
+    let conn_string = format!(
+        "host={} port={} user={} password={} dbname={}",
+        config.host, config.port, config.username, config.password, config.database
+    );
+
+    let (client, connection) = tokio_postgres::connect(&conn_string, NoTls).await?;
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("Connection error: {}", e);
+        }
+    });
+
+    println!("Fetching customer data for customer_id: {}", customer_id);
+    let customer_row = client
+        .query_one("SELECT * FROM customers WHERE customer_id = $1", &[&customer_id])
+        .await?;
+
+    let customer = Customer {
+        customer_id: customer_row.get("customer_id"),
+        company_name: customer_row.get("company_name"),
+        contact_name: customer_row.get("contact_name"),
+        email: customer_row.get("email"),
+        phone: customer_row.get("phone"),
+        address: customer_row.get("address"),
+        city: customer_row.get("city"),
+        postal_code: customer_row.get("postal_code"),
+        country: customer_row.get("country"),
+        website: customer_row.get("website"),
+        contact_position: customer_row.get("contact_position"),
+    };
+
+    println!("Fetched customer: {:?}", customer);
+
+    println!("Fetching contact history for customer_id: {}", customer_id);
+    let history_rows = client
+        .query("SELECT * FROM contact_history WHERE customer_id = $1 ORDER BY contact_date DESC", &[&customer_id])
+        .await?;
+
+    let history: Vec<ContactHistory> = history_rows
+        .into_iter()
+        .map(|row| {
+            let contact_date: DateTime<Utc> = row.get("contact_date");
+            let follow_up_date: Option<NaiveDate> = row.get("follow_up_date");
+            let created_at: DateTime<Utc> = row.get("created_at");
+            let updated_at: DateTime<Utc> = row.get("updated_at");
+
+            ContactHistory {
+                history_id: row.get("history_id"),
+                customer_id: row.get("customer_id"),
+                contact_type: row.get("contact_type"),
+                contact_date,
+                contact_duration: row.get("contact_duration"),
+                contact_method: row.get("contact_method"),
+                contact_outcome: row.get("contact_outcome"),
+                notes: row.get("notes"),
+                follow_up_date,
+                created_by: row.get("created_by"),
+                created_at,
+                updated_at,
+            }
+        })
+        .collect();
+
+    println!("Fetched {} contact history entries", history.len());
+
+    Ok((customer, history))
 }

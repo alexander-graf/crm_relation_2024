@@ -1,6 +1,8 @@
 use eframe::egui;
 use crate::app::View;
-use crate::db::{self, DbConfig, Customer};
+use crate::config::DbConfig;
+use crate::db::{self, Customer};
+
 use std::path::PathBuf;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;

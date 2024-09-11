@@ -3,6 +3,7 @@ use std::path::PathBuf;
 mod app;
 mod db;
 mod ui;
+pub mod config;
 
 fn load_initial_config() {
     let config_path = PathBuf::from(format!("{}/.config/zugangsdaten.ini", std::env::var("HOME").unwrap()));
